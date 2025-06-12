@@ -1,0 +1,1 @@
+./vlm.sh ./black_woman.jpg "What color does the woman wear?" http://localhost:8080

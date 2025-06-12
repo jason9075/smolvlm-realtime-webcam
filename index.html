@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,19 +15,23 @@
             padding: 20px;
             background-color: #f0f0f0;
         }
-        .controls, .io-areas {
+
+        .controls,
+        .io-areas {
             display: flex;
             gap: 10px;
             align-items: center;
             background-color: #fff;
             padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
+
         .io-areas {
             flex-direction: column;
             align-items: stretch;
         }
+
         textarea {
             width: 300px;
             height: 80px;
@@ -35,6 +40,7 @@
             border-radius: 4px;
             font-size: 14px;
         }
+
         #videoFeed {
             width: 480px;
             height: 360px;
@@ -42,6 +48,7 @@
             background-color: #000;
             border-radius: 8px;
         }
+
         #startButton {
             padding: 10px 20px;
             font-size: 16px;
@@ -50,25 +57,33 @@
             border-radius: 4px;
             color: white;
         }
+
         #startButton.start {
-            background-color: #28a745; /* Green */
+            background-color: #28a745;
+            /* Green */
         }
+
         #startButton.stop {
-            background-color: #dc3545; /* Red */
+            background-color: #dc3545;
+            /* Red */
         }
+
         label {
             font-weight: bold;
         }
+
         select {
             padding: 8px;
             border-radius: 4px;
             border: 1px solid #ccc;
         }
+
         .hidden {
             display: none;
         }
     </style>
 </head>
+
 <body>
 
     <h1>Camera Interaction App</h1>
@@ -87,7 +102,8 @@
         </div>
         <div>
             <label for="responseText">Response:</label><br>
-            <textarea id="responseText" style="height: 2em; width: 40em" name="Response" readonly placeholder="Server response will appear here..."></textarea>
+            <textarea id="responseText" style="height: 2em; width: 40em" name="Response" readonly
+                placeholder="Server response will appear here..."></textarea>
         </div>
     </div>
 
@@ -99,8 +115,14 @@
             <option value="500" selected>500ms</option>
             <option value="1000">1s</option>
             <option value="2000">2s</option>
+            <option value="3000">3s</option>
+            <option value="5000">5s</option>
+            <option value="10000">10s</option>
         </select>
         <button id="startButton" class="start">Start</button>
+    </div>
+    <div id="timeCost" style="font-weight: bold; color: #333;">
+        Time cost: -- ms
     </div>
 
     <script>
@@ -117,6 +139,7 @@
         let stream;
         let intervalId;
         let isProcessing = false;
+        let shouldStop = false;
 
         // Returns response text (string)
         async function sendChatCompletionRequest(instruction, imageBase64URL) {
@@ -128,12 +151,16 @@
                 body: JSON.stringify({
                     max_tokens: 100,
                     messages: [
-                        { role: 'user', content: [
-                            { type: 'text', text: instruction },
-                            { type: 'image_url', image_url: {
-                                url: imageBase64URL,
-                            } }
-                        ] },
+                        {
+                            role: 'user', content: [
+                                {type: 'text', text: instruction},
+                                {
+                                    type: 'image_url', image_url: {
+                                        url: imageBase64URL,
+                                    }
+                                }
+                            ]
+                        },
                     ]
                 })
             });
@@ -148,7 +175,7 @@
         // 1. Ask for camera permission on load
         async function initCamera() {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                stream = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
                 video.srcObject = stream;
                 responseText.value = "Camera access granted. Ready to start.";
             } catch (err) {
@@ -171,31 +198,35 @@
         }
 
         async function sendData() {
-            if (!isProcessing) return; // Ensure we don't have overlapping requests if processing takes longer than interval
-
             const instruction = instructionText.value;
             const imageBase64URL = captureImage();
 
             if (!imageBase64URL) {
                 responseText.value = "Failed to capture image. Stream might not be active.";
-                // Optionally stop processing if image capture fails consistently
-                // handleStop();
                 return;
             }
 
-            const payload = {
-                instruction: instruction,
-                imageBase64URL: imageBase64URL
-            };
+            const startTime = performance.now();
 
             try {
-                const response = await sendChatCompletionRequest(payload.instruction, payload.imageBase64URL);
+                const response = await sendChatCompletionRequest(instruction, imageBase64URL);
+                const endTime = performance.now();
+                const duration = Math.round(endTime - startTime);
                 responseText.value = response;
+                document.getElementById("timeCost").innerText = `Time cost: ${duration} ms`;
             } catch (error) {
                 console.error('Error sending data:', error);
                 responseText.value = `Error: ${error.message}`;
             }
         }
+
+        async function pollingLoop(intervalMs) {
+            while (!shouldStop) {
+                await sendData();
+                await new Promise(resolve => setTimeout(resolve, intervalMs));
+            }
+        }
+
 
         function handleStart() {
             if (!stream) {
@@ -203,7 +234,9 @@
                 alert("Camera not available. Please grant permission first.");
                 return;
             }
+
             isProcessing = true;
+            shouldStop = false;
             startButton.textContent = "Stop";
             startButton.classList.remove('start');
             startButton.classList.add('stop');
@@ -214,30 +247,25 @@
             responseText.value = "Processing started...";
 
             const intervalMs = parseInt(intervalSelect.value, 10);
-            
-            // Initial immediate call
-            sendData(); 
-            
-            // Then set interval
-            intervalId = setInterval(sendData, intervalMs);
+            pollingLoop(intervalMs);  // 🔁 啟動 polling loop
         }
 
         function handleStop() {
             isProcessing = false;
-            if (intervalId) {
-                clearInterval(intervalId);
-                intervalId = null;
-            }
+            shouldStop = true;
             startButton.textContent = "Start";
             startButton.classList.remove('stop');
             startButton.classList.add('start');
 
             instructionText.disabled = false;
             intervalSelect.disabled = false;
+
             if (responseText.value.startsWith("Processing started...")) {
                 responseText.value = "Processing stopped.";
             }
         }
+
+
 
         startButton.addEventListener('click', () => {
             if (isProcessing) {
@@ -262,4 +290,5 @@
 
     </script>
 </body>
+
 </html>
