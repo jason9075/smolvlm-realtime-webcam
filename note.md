@@ -1,6 +1,6 @@
 # build:
 
-cmake -B build -DLLAMA_CUDA=ON
+cmake -B build -DLLAMA_CUDA=ON -DLLAMA_SERVER_SSL=ON
 cmake --build build --config Release -t llama-server
 
 # usage:
